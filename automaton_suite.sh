@@ -1,17 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BANNER=$'🌌 Neon Tidy — Cosmic Cleanup Console\n'
-BANNER+=$'-------------------------------------\n'
-BANNER+=$'Pulse, purge, and power up.\n'
+BANNER=''
+BANNER+=$'⚙️  Automaton Suite — Steel & Silk Edition\n'
+BANNER+=$'------------------------------------------\n'
+BANNER+=$'System sheen with a CLI gleam.\n'
 
 idle_minutes_default=45
-
-log_file="${HOME:-/tmp}/.neon_tidy.log"
-
-log() {
-  printf '%s | %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" >> "$log_file"
-}
 
 temp_dir() {
   echo "${TEMP:-${TMPDIR:-/tmp}}"
@@ -32,6 +27,21 @@ human_bytes() {
   printf '%s %s' "$value" "$unit"
 }
 
+snapshot() {
+  echo ""
+  echo "📊 System Snapshot"
+  local tdir
+  tdir=$(temp_dir)
+  local size
+  size=$(du -sk "$tdir" 2>/dev/null | awk '{print $1}')
+  size=$(( size * 1024 ))
+  echo "Temp path: $tdir"
+  echo "Temp size: $(human_bytes "$size")"
+  echo ""
+  echo "Top memory processes:"
+  ps -eo pid,comm,rss --sort=-rss | head -n 6 | tail -n 5 | awk '{printf "  PID %6s | %-25s | %s KB\n", $1, $2, $3}'
+}
+
 confirm() {
   local prompt=$1
   read -r -p "$prompt [y/N]: " choice
@@ -41,25 +51,9 @@ confirm() {
   esac
 }
 
-system_status() {
-  echo ""
-  echo "🌠 System Pulse"
-  local tdir
-  tdir=$(temp_dir)
-  local size
-  size=$(du -sk "$tdir" 2>/dev/null | awk '{print $1}')
-  size=$(( size * 1024 ))
-  echo "Temp path: $tdir"
-  echo "Temp size: $(human_bytes "$size")"
-  echo ""
-  echo "Top CPU processes:"
-  ps -eo pid,comm,%cpu --sort=-%cpu | head -n 6 | tail -n 5 | awk '{printf "  PID %6s | %-25s | %s%% CPU\n", $1, $2, $3}'
-  log "Viewed system pulse"
-}
-
 clean_temp() {
   echo ""
-  echo "🧼 Photon Wash"
+  echo "🧹 Clean Temp Files"
   local tdir
   tdir=$(temp_dir)
   local size
@@ -67,7 +61,7 @@ clean_temp() {
   size=$(( size * 1024 ))
   echo "Temp folder: $tdir"
   echo "Current size: $(human_bytes "$size")"
-  if ! confirm "Blast temp files?"; then
+  if ! confirm "Proceed with cleanup?"; then
     echo "Cancelled."
     return
   fi
@@ -82,7 +76,6 @@ clean_temp() {
   size_after=$(( size_after * 1024 ))
   echo "Removed files: $removed"
   echo "New size: $(human_bytes "$size_after")"
-  log "Cleaned temp files ($removed removed)"
 }
 
 parse_ps_time() {
@@ -119,9 +112,9 @@ idle_candidates() {
   done
 }
 
-hibernate_idle() {
+close_idle_apps() {
   echo ""
-  echo "🛸 Hibernation Dock"
+  echo "🛌 Idle App Finder"
   read -r -p "Idle minutes threshold [${idle_minutes_default}]: " minutes
   local threshold=${minutes:-$idle_minutes_default}
   local threshold_seconds=$(( threshold * 60 ))
@@ -139,65 +132,58 @@ hibernate_idle() {
       pid=$(awk '{print $2}' <<< "$line")
       kill -9 "$pid" 2>/dev/null && echo "Closed PID $pid." || echo "Could not close PID $pid."
     done <<< "$results"
-    log "Terminated idle processes"
   fi
-}
-
-focus_mode() {
-  echo ""
-  echo "🎧 Focus Mode"
-  read -r -p "Process name to keep (pattern): " keep
-  if [[ -z "$keep" ]]; then
-    echo "No pattern provided."
-    return
-  fi
-  local pids
-  pids=$(pgrep -f "$keep" || true)
-  if [[ -z "$pids" ]]; then
-    echo "No processes match '$keep'."
-    return
-  fi
-  echo "Lowering priority for everything except '$keep'."
-  ps -eo pid,comm | tail -n +2 | while read -r pid comm; do
-    if [[ "$pids" != *"$pid"* ]]; then
-      renice 10 -p "$pid" >/dev/null 2>&1 || true
-    fi
-  done
-  log "Entered focus mode for pattern: $keep"
 }
 
 launch_app() {
   echo ""
-  echo "🚀 Launch Orbit"
-  read -r -p "Enter command: " cmd
+  echo "🚀 Launch App"
+  read -r -p "Enter command (e.g., 'code', '/usr/bin/top'): " cmd
   if [[ -z "$cmd" ]]; then
     echo "No command provided."
     return
   fi
   nohup bash -c "$cmd" >/dev/null 2>&1 &
   echo "Launched."
-  log "Launched command: $cmd"
+}
+
+kill_by_pid() {
+  echo ""
+  echo "🧨 Terminate by PID"
+  read -r -p "PID to terminate: " pid
+  if [[ -z "$pid" ]]; then
+    echo "No PID provided."
+    return
+  fi
+  if confirm "Terminate PID $pid?"; then
+    kill -9 "$pid" 2>/dev/null && echo "Closed PID $pid." || echo "Could not close PID $pid."
+  fi
+}
+
+lower_priority() {
+  echo ""
+  echo "🌙 Lower Priority"
+  read -r -p "PID to deprioritize: " pid
+  if [[ -z "$pid" ]]; then
+    echo "No PID provided."
+    return
+  fi
+  if renice 10 -p "$pid" >/dev/null 2>&1; then
+    echo "Priority lowered."
+  else
+    echo "Could not change priority."
+  fi
 }
 
 print_menu() {
   echo "$BANNER"
-  echo "[1] System pulse - Top CPU users + temp size."
-  echo "[2] Photon wash - Clean temp files."
-  echo "[3] Hibernation dock - Find & close idle apps (45+ minutes)."
-  echo "[4] Focus mode - Deprioritize everything except a chosen app."
-  echo "[5] Launch orbit - Run a command."
-  echo "[L] View log - See actions taken."
-  echo "[Q] Quit - Exit Neon Tidy."
-}
-
-show_log() {
-  echo ""
-  echo "📜 Session Log: $log_file"
-  if [[ -f "$log_file" ]]; then
-    tail -n 50 "$log_file"
-  else
-    echo "No log entries yet."
-  fi
+  echo "[1] System snapshot - Show memory-hungry processes and temp folder size."
+  echo "[2] Clean temp files - Free up space by clearing OS temp files."
+  echo "[3] Find & close idle apps - List apps idle for 45+ minutes and optionally close them."
+  echo "[4] Launch an app/command - Start a program by typing its command."
+  echo "[5] Terminate by PID - Close a specific process by PID."
+  echo "[6] Lower priority - Reduce CPU priority of a process."
+  echo "[Q] Quit - Exit Automaton Suite."
 }
 
 main() {
@@ -205,13 +191,13 @@ main() {
   while true; do
     read -r -p $'\nSelect option: ' choice
     case "${choice^^}" in
-      1) system_status ;;
+      1) snapshot ;;
       2) clean_temp ;;
-      3) hibernate_idle ;;
-      4) focus_mode ;;
-      5) launch_app ;;
-      L) show_log ;;
-      Q|QUIT|EXIT) echo "Drift easy. ✨"; break ;;
+      3) close_idle_apps ;;
+      4) launch_app ;;
+      5) kill_by_pid ;;
+      6) lower_priority ;;
+      Q|QUIT|EXIT) echo "Stay optimized. ✨"; break ;;
       *) echo "Unknown choice. Try again." ;;
     esac
   done
